@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>עולם חי — משחק שנוצר על ידי AI</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#000; font-family:'Segoe UI',Arial,sans-serif; }
+  canvas { display:block; }
+  #hud { position:fixed; inset:0; pointer-events:none; color:#fff; z-index:5; }
+  .panel { background:rgba(0,0,0,.45); border-radius:12px; padding:8px 14px; backdrop-filter:blur(4px); }
+  #topbar { position:absolute; top:12px; right:12px; display:flex; gap:10px; align-items:center; font-size:20px; font-weight:700; }
+  #hearts { position:absolute; top:12px; left:12px; font-size:26px; letter-spacing:2px; }
+  #mission { position:absolute; top:14px; left:50%; transform:translateX(-50%); font-size:18px; font-weight:600; text-align:center; max-width:70vw; }
+  #bossbar { position:absolute; top:64px; left:50%; transform:translateX(-50%); width:min(60vw,500px); display:none; }
+  #bossbar .label { text-align:center; font-weight:800; font-size:18px; color:#ff9a9a; text-shadow:0 0 8px #f00; margin-bottom:4px; }
+  #bossbar .bar { height:16px; background:rgba(0,0,0,.5); border:2px solid #ff6b6b; border-radius:8px; overflow:hidden; }
+  #bossbar .fill { height:100%; width:100%; background:linear-gradient(90deg,#ff3b3b,#ff9a3b); transition:width .3s; }
+  #crosshair { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:22px; opacity:.85; text-shadow:0 0 4px #000; }
+  #vignette { position:absolute; inset:0; box-shadow:inset 0 0 120px 40px rgba(255,0,0,.65); opacity:0; transition:opacity .15s; }
+  #toast { position:absolute; bottom:18%; left:50%; transform:translateX(-50%); font-size:26px; font-weight:800; text-shadow:0 2px 8px #000; opacity:0; transition:opacity .4s; text-align:center; }
+  #hint { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); font-size:14px; opacity:.75; }
+  /* מסכי פתיחה/סיום */
+  .screen { position:fixed; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; color:#fff; background:radial-gradient(ellipse at 50% 30%, #16324f 0%, #0a1522 70%, #050a12 100%); }
+  .screen h1 { font-size:clamp(40px,8vw,84px); font-weight:900; background:linear-gradient(90deg,#7cf7d4,#6bb6ff,#c77dff); -webkit-background-clip:text; background-clip:text; color:transparent; margin-bottom:6px; }
+  .screen h2 { font-size:clamp(16px,3vw,24px); font-weight:400; color:#bcd6ee; margin-bottom:26px; }
+  .screen .btn { pointer-events:auto; font-size:26px; font-weight:800; padding:14px 52px; border:none; border-radius:40px; cursor:pointer; color:#06283d; background:linear-gradient(90deg,#7cf7d4,#6bb6ff); box-shadow:0 6px 30px rgba(107,182,255,.45); transition:transform .15s; font-family:inherit; }
+  .screen .btn:hover { transform:scale(1.06); }
+  .controls { margin-top:30px; display:flex; gap:14px; flex-wrap:wrap; justify-content:center; font-size:15px; color:#9fc2e0; }
+  .controls span { background:rgba(255,255,255,.08); padding:8px 14px; border-radius:10px; }
+  .aiTag { margin-top:34px; font-size:14px; color:#6f93b3; }
+  #winScreen,#deadScreen { display:none; background:rgba(3,8,15,.88); }
+  #winScreen h1 { background:linear-gradient(90deg,#ffe066,#ff9a3b,#ff5e78); -webkit-background-clip:text; background-clip:text; }
+  /* מגע */
+  #touchUI { display:none; position:fixed; inset:0; z-index:6; pointer-events:none; }
+  #stick { position:absolute; bottom:70px; right:40px; width:120px; height:120px; border:2px solid rgba(255,255,255,.4); border-radius:50%; pointer-events:auto; }
+  #nub { position:absolute; top:35px; left:35px; width:50px; height:50px; background:rgba(255,255,255,.5); border-radius:50%; }
+  .tbtn { position:absolute; width:76px; height:76px; border-radius:50%; background:rgba(255,255,255,.22); border:2px solid rgba(255,255,255,.5); color:#fff; font-size:15px; font-weight:800; pointer-events:auto; display:flex; align-items:center; justify-content:center; font-family:inherit; }
+  #btnFire { bottom:130px; left:40px; }
+  #btnJump { bottom:44px; left:130px; }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div id="topbar">
+    <div class="panel">💎 <span id="gems">0</span>/10</div>
+    <div class="panel">⭐ <span id="score">0</span></div>
+  </div>
+  <div id="hearts" class="panel">❤️❤️❤️❤️❤️</div>
+  <div id="mission" class="panel">אספו 10 גבישים... אבל זהירות מהסלימים 👀</div>
+  <div id="bossbar">
+    <div class="label">🐉 דרקון האש 🐉</div>
+    <div class="bar"><div class="fill" id="bossfill"></div></div>
+  </div>
+  <div id="crosshair">＋</div>
+  <div id="vignette"></div>
+  <div id="toast"></div>
+  <div id="hint">WASD — תנועה | עכבר — מבט | קליק — כדור אש | רווח — קפיצה | Shift — ריצה | M — מוזיקה</div>
+</div>
+
+<div id="touchUI">
+  <div id="stick"><div id="nub"></div></div>
+  <button class="tbtn" id="btnFire">🔥 אש</button>
+  <button class="tbtn" id="btnJump">⬆ קפיצה</button>
+</div>
+
+<div class="screen" id="startScreen">
+  <h1>עולם חי</h1>
+  <h2>אי קסום שנוצר כולו על ידי בינה מלאכותית — בפקודה אחת</h2>
+  <button class="btn" id="startBtn">▶ התחל הרפתקה</button>
+  <div class="controls">
+    <span>🖱️ עכבר — להסתכל</span><span>⌨️ WASD — לזוז</span><span>🔥 קליק — כדור אש</span><span>💎 אספו 10 גבישים</span><span>🐉 ...ואז יגיע הדרקון</span>
+  </div>
+  <div class="aiTag">🤖 כל הקוד, הגרפיקה והצלילים נוצרו על ידי מודל AI בקובץ HTML יחיד</div>
+</div>
+
+<div class="screen" id="winScreen">
+  <h1>🏆 ניצחון!</h1>
+  <h2>הבסתם את דרקון האש והצלתם את האי!</h2>
+  <button class="btn" onclick="location.reload()">🔄 לשחק שוב</button>
+</div>
+
+<div class="screen" id="deadScreen">
+  <h1 style="background:linear-gradient(90deg,#ff5e78,#ff9a3b);-webkit-background-clip:text;background-clip:text;">💀 נפסלתם!</h1>
+  <h2>האי עוד זקוק לגיבור...</h2>
+  <button class="btn" id="respawnBtn">💪 לקום ולהמשיך</button>
+</div>
+
+<script src="three.min.js"></script>
+<script>
+"use strict";
+/* ============ עולם חי — משחק תלת־ממד שנוצר על ידי AI ============ */
+
+const WORLD = 380, WATER_Y = 2.2, DAY_LEN = 150;
+let scene, camera, renderer, clock;
+let player, playerMesh, yaw = 0, pitch = -0.15;
+let vel = new THREE.Vector3(), onGround = false;
+let keys = {}, started = false, dead = false, won = false;
+let hp = 5, gems = 0, score = 0, invuln = 0;
+let bossMode = false, bossHP = 20;
+const BOSS_MAX = 20;
+let timeOfDay = 0.35; // 0..1, 0.5 = צהריים
+const $ = id => document.getElementById(id);
+
+/* ---------- רעש פרוצדורלי (ליצירת השטח) ---------- */
+function hash2(ix, iz) {
+  let n = ix * 374761393 + iz * 668265263;
+  n = (n ^ (n >> 13)) * 1274126177;
+  return ((n ^ (n >> 16)) >>> 0) / 4294967295;
+}
+function vnoise(x, z) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fx = x - ix, fz = z - iz;
+  const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz);
+  const a = hash2(ix, iz), b = hash2(ix + 1, iz), c = hash2(ix, iz + 1), d = hash2(ix + 1, iz + 1);
+  return a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz;
+}
+function fbm(x, z) {
+  let v = 0, amp = 1, f = 1, tot = 0;
+  for (let i = 0; i < 4; i++) { v += vnoise(x * f, z * f) * amp; tot += amp; amp *= 0.5; f *= 2.1; }
+  return v / tot;
+}
+function heightAt(x, z) {
+  const d = Math.sqrt(x * x + z * z) / (WORLD * 0.5);
+  const falloff = Math.max(0, 1 - d * d * 1.15);
+  const h = fbm(x * 0.012 + 7.3, z * 0.012 + 3.1);
+  const mountains = Math.pow(fbm(x * 0.006 + 21, z * 0.006 + 9), 2.2) * 38;
+  return (h * 14 + mountains) * falloff - 1.5;
+}
+
+/* ---------- סאונד פרוצדורלי ---------- */
+let AC = null, musicOn = true, masterGain;
+function initAudio() {
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = AC.createGain(); masterGain.gain.value = 0.5; masterGain.connect(AC.destination);
+  // רוח — רעש מסונן
+  const len = AC.sampleRate * 2, buf = AC.createBuffer(1, len, AC.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  const wind = AC.createBufferSource(); wind.buffer = buf; wind.loop = true;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
+  const wg = AC.createGain(); wg.gain.value = 0.05;
+  wind.connect(lp); lp.connect(wg); wg.connect(masterGain); wind.start();
+  scheduleMusic();
+}
+function tone(freq, dur, type, vol, when = 0, slide = 0) {
+  if (!AC) return;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.value = freq;
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), AC.currentTime + when + dur);
+  g.gain.setValueAtTime(vol, AC.currentTime + when);
+  g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + when + dur);
+  o.connect(g); g.connect(masterGain);
+  o.start(AC.currentTime + when); o.stop(AC.currentTime + when + dur + 0.05);
+}
+function sfxShoot()   { tone(600, .25, 'sawtooth', .18, 0, -450); tone(220, .3, 'square', .08, 0, -150); }
+function sfxBoom()    { tone(120, .5, 'sawtooth', .3, 0, -80); tone(60, .6, 'triangle', .3, 0, -30); }
+function sfxGem()     { tone(880, .12, 'sine', .25); tone(1320, .2, 'sine', .22, .09); }
+function sfxHurt()    { tone(200, .3, 'square', .25, 0, -120); }
+function sfxJump()    { tone(300, .18, 'sine', .15, 0, 180); }
+function sfxRoar()    { tone(90, 1.2, 'sawtooth', .4, 0, -40); tone(140, 1.0, 'square', .2, .1, -60); }
+function sfxWin()     { [523, 659, 784, 1047].forEach((f, i) => tone(f, .35, 'triangle', .3, i * .16)); }
+const SCALE = [261.6, 293.7, 329.6, 392, 440, 523.3, 587.3];
+function scheduleMusic() {
+  if (!AC) return;
+  if (musicOn && started && !dead) {
+    const n = SCALE[Math.floor(Math.random() * SCALE.length)] * (Math.random() < .3 ? 2 : 1);
+    tone(n, 1.6, 'sine', bossMode ? 0.02 : 0.06);
+    if (bossMode) { tone(65.4, .3, 'sawtooth', .12); tone(65.4, .3, 'sawtooth', .12, .5); }
+  }
+  setTimeout(scheduleMusic, bossMode ? 1000 : 1800);
+}
+
+/* ---------- אתחול סצנה ---------- */
+function init() {
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x87c5eb, 90, 380);
+  camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 1200);
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  document.body.appendChild(renderer.domElement);
+  clock = new THREE.Clock();
+
+  buildLights(); buildSky(); buildTerrain(); buildWater();
+  buildTrees(); buildRocks(); buildGrass(); buildCrystals();
+  buildFoxes(); buildBirds(); buildSlimes(); buildFireflies();
+  buildDragon(); buildPlayer(); initParticles();
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+  animate();
+}
+
+/* ---------- תאורה ושמיים ---------- */
+let sun, moonLight, ambient, hemi, sunMesh, moonMesh, stars;
+function buildLights() {
+  sun = new THREE.DirectionalLight(0xffffff, 1.1);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  const s = 90;
+  Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 10, far: 500 });
+  sun.shadow.bias = -0.0005;
+  scene.add(sun); scene.add(sun.target);
+  ambient = new THREE.AmbientLight(0x8899bb, 0.35); scene.add(ambient);
+  hemi = new THREE.HemisphereLight(0xbfe3ff, 0x3d7a3a, 0.5); scene.add(hemi);
+  moonLight = new THREE.DirectionalLight(0x8899ff, 0); scene.add(moonLight);
+}
+function buildSky() {
+  sunMesh = new THREE.Mesh(new THREE.SphereGeometry(18, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffe9a0, fog: false }));
+  scene.add(sunMesh);
+  moonMesh = new THREE.Mesh(new THREE.SphereGeometry(11, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xdfe8ff, fog: false }));
+  scene.add(moonMesh);
+  const n = 900, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const v = new THREE.Vector3().randomDirection().multiplyScalar(900);
+    v.y = Math.abs(v.y);
+    pos.set([v.x, v.y, v.z], i * 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  stars = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, transparent: true, opacity: 0, fog: false }));
+  scene.add(stars);
+}
+
+/* ---------- שטח ---------- */
+function buildTerrain() {
+  const seg = 150;
+  const g = new THREE.PlaneGeometry(WORLD, WORLD, seg, seg);
+  g.rotateX(-Math.PI / 2);
+  const pos = g.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const cSand = new THREE.Color(0xdcc27a), cGrass = new THREE.Color(0x4f9e42),
+        cGrass2 = new THREE.Color(0x3d7d33), cRock = new THREE.Color(0x8d8d94), cSnow = new THREE.Color(0xf2f4fa);
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    const h = heightAt(x, z);
+    pos.setY(i, h);
+    if (h < WATER_Y + 1.2) c.copy(cSand);
+    else if (h < 12) c.copy(cGrass).lerp(cGrass2, vnoise(x * .08, z * .08));
+    else if (h < 22) c.copy(cRock);
+    else c.copy(cSnow);
+    c.offsetHSL(0, 0, (vnoise(x * .3, z * .3) - .5) * .06);
+    colors.set([c.r, c.g, c.b], i * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  g.computeVertexNormals();
+  const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+}
+let water;
+function buildWater() {
+  water = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600, 1, 1),
+    new THREE.MeshPhongMaterial({ color: 0x2a7fd4, transparent: true, opacity: 0.78, shininess: 120, specular: 0x99ccff }));
+  water.rotation.x = -Math.PI / 2;
+  water.position.y = WATER_Y;
+  scene.add(water);
+}
+
+/* ---------- עצים, סלעים, דשא ---------- */
+function scatter(count, minH, maxH) {
+  const pts = [];
+  let tries = 0;
+  while (pts.length < count && tries++ < count * 30) {
+    const x = (Math.random() - .5) * WORLD * .92, z = (Math.random() - .5) * WORLD * .92;
+    const h = heightAt(x, z);
+    if (h > minH && h < maxH) pts.push([x, h, z]);
+  }
+  return pts;
+}
+function buildTrees() {
+  const pts = scatter(170, WATER_Y + 1.5, 14);
+  const trunkG = new THREE.CylinderGeometry(.35, .55, 3, 6);
+  const leafG = new THREE.ConeGeometry(2.4, 5.5, 7);
+  const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshLambertMaterial({ color: 0x6b4a2b, flatShading: true }), pts.length);
+  const leaves = new THREE.InstancedMesh(leafG, new THREE.MeshLambertMaterial({ color: 0x2e7d32, flatShading: true }), pts.length);
+  trunks.castShadow = leaves.castShadow = true;
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
+  const colorLeaf = new THREE.Color();
+  pts.forEach(([x, y, z], i) => {
+    const s = .7 + Math.random() * .9;
+    q.setFromEuler(new THREE.Euler(0, Math.random() * 6.28, 0));
+    m.compose(p.set(x, y + 1.5 * s, z), q, sc.set(s, s, s));
+    trunks.setMatrixAt(i, m);
+    m.compose(p.set(x, y + (3 + 2.2) * s * .8, z), q, sc.set(s, s, s));
+    leaves.setMatrixAt(i, m);
+    colorLeaf.setHSL(.3 + Math.random() * .07, .55, .3 + Math.random() * .12);
+    leaves.setColorAt(i, colorLeaf);
+  });
+  scene.add(trunks, leaves);
+}
+function buildRocks() {
+  const pts = scatter(60, WATER_Y + .5, 26);
+  const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0),
+    new THREE.MeshLambertMaterial({ color: 0x7d7d85, flatShading: true }), pts.length);
+  rocks.castShadow = true;
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
+  pts.forEach(([x, y, z], i) => {
+    const s = .6 + Math.random() * 1.6;
+    q.setFromEuler(new THREE.Euler(Math.random(), Math.random() * 6, Math.random()));
+    m.compose(p.set(x, y + s * .3, z), q, sc.set(s, s * .8, s));
+    rocks.setMatrixAt(i, m);
+  });
+  scene.add(rocks);
+}
+function buildGrass() {
+  const pts = scatter(500, WATER_Y + 1.2, 11);
+  const grass = new THREE.InstancedMesh(new THREE.ConeGeometry(.14, .9, 4),
+    new THREE.MeshLambertMaterial({ color: 0x5fb84f, flatShading: true }), pts.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
+  pts.forEach(([x, y, z], i) => {
+    q.setFromEuler(new THREE.Euler((Math.random() - .5) * .4, Math.random() * 6, (Math.random() - .5) * .4));
+    const s = .8 + Math.random();
+    m.compose(p.set(x, y + .35 * s, z), q, sc.set(s, s, s));
+    grass.setMatrixAt(i, m);
+  });
+  scene.add(grass);
+}
+
+/* ---------- גבישים ---------- */
+const crystals = [];
+function buildCrystals() {
+  const pts = scatter(14, WATER_Y + 1.5, 20);
+  const g = new THREE.OctahedronGeometry(.9, 0);
+  pts.forEach(([x, y, z]) => {
+    const mat = new THREE.MeshPhongMaterial({ color: 0x66eeff, emissive: 0x2299cc, shininess: 100, transparent: true, opacity: .92 });
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.position.set(x, y + 1.3, z);
+    mesh.scale.setScalar(1.1);
+    scene.add(mesh);
+    crystals.push({ mesh, baseY: y + 1.3, taken: false });
+  });
+}
+
+/* ---------- שועלים ---------- */
+const foxes = [];
+function makeFox() {
+  const fox = new THREE.Group();
+  const orange = new THREE.MeshLambertMaterial({ color: 0xe07b2f, flatShading: true });
+  const white = new THREE.MeshLambertMaterial({ color: 0xf5efe0, flatShading: true });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, .75, .7), orange);
+  body.position.y = .8; body.castShadow = true; fox.add(body);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(.6, .55, .55), orange);
+  head.position.set(.95, 1.15, 0); fox.add(head);
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(.3, .22, .25), white);
+  snout.position.set(1.32, 1.05, 0); fox.add(snout);
+  [-.16, .16].forEach(z => {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(.14, .35, 4), orange);
+    ear.position.set(.9, 1.55, z); fox.add(ear);
+  });
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(.24, 1, 5), white);
+  tail.rotation.z = Math.PI / 2 - .5; tail.position.set(-1, 1, 0); fox.add(tail);
+  const legs = [];
+  [[-.5, .25], [-.5, -.25], [.5, .25], [.5, -.25]].forEach(([x, z]) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(.18, .8, .18), orange);
+    leg.position.set(x, .4, z); fox.add(leg); legs.push(leg);
+  });
+  fox.userData.legs = legs;
+  return fox;
+}
+function buildFoxes() {
+  scatter(12, WATER_Y + 1.5, 12).forEach(([x, y, z]) => {
+    const mesh = makeFox();
+    mesh.position.set(x, y, z);
+    scene.add(mesh);
+    foxes.push({ mesh, target: new THREE.Vector3(x, 0, z), timer: Math.random() * 4, speed: 0 });
+  });
+}
+
+/* ---------- ציפורים ---------- */
+const birds = [];
+function buildBirds() {
+  for (let i = 0; i < 16; i++) {
+    const bird = new THREE.Group();
+    const mat = new THREE.MeshLambertMaterial({ color: [0xffffff, 0x334455, 0xcc5544][i % 3], flatShading: true });
+    const body = new THREE.Mesh(new THREE.ConeGeometry(.35, 1.4, 5), mat);
+    body.rotation.x = Math.PI / 2; bird.add(body);
+    const wingG = new THREE.BoxGeometry(2.2, .06, .6);
+    const wL = new THREE.Mesh(wingG, mat), wR = new THREE.Mesh(wingG, mat);
+    wL.position.x = -1.1; wR.position.x = 1.1;
+    bird.add(wL, wR);
+    bird.userData = { wL, wR };
+    scene.add(bird);
+    birds.push({ mesh: bird, cx: (Math.random() - .5) * 200, cz: (Math.random() - .5) * 200, r: 26 + Math.random() * 50, h: 30 + Math.random() * 25, a: Math.random() * 6.28, sp: .25 + Math.random() * .35, flap: Math.random() * 6 });
+  }
+}
+
+/* ---------- סלימים (אויבים) ---------- */
+const slimes = [];
+function makeSlime(scale, color) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 10),
+    new THREE.MeshPhongMaterial({ color, transparent: true, opacity: .88, shininess: 90 }));
+  body.scale.y = .75; body.castShadow = true; g.add(body);
+  [-.35, .35].forEach(x => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(.18, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    eye.position.set(x, .3, .8); g.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(.09, 6, 6), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+    pupil.position.set(x, .3, .95); g.add(pupil);
+  });
+  g.scale.setScalar(scale);
+  g.userData.body = body;
+  return g;
+}
+function spawnSlime(x, z) {
+  const scale = 1 + Math.random() * .9;
+  const mesh = makeSlime(scale, [0x55cc44, 0x9955dd, 0xdd8833][Math.floor(Math.random() * 3)]);
+  const y = heightAt(x, z);
+  mesh.position.set(x, y + scale * .75, z);
+  scene.add(mesh);
+  slimes.push({ mesh, scale, hopT: Math.random() * 2, vy: 0, grounded: true, hp: Math.ceil(scale), alive: true });
+}
+function buildSlimes() {
+  scatter(11, WATER_Y + 1.5, 14).forEach(([x, , z]) => spawnSlime(x, z));
+}
+
+/* ---------- גחליליות ---------- */
+let fireflies, fireflyData = [];
+function buildFireflies() {
+  const n = 120, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const x = (Math.random() - .5) * 300, z = (Math.random() - .5) * 300;
+    const y = Math.max(heightAt(x, z), WATER_Y) + 1 + Math.random() * 4;
+    pos.set([x, y, z], i * 3);
+    fireflyData.push({ x, y, z, ph: Math.random() * 6.28 });
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  fireflies = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xd9ff7a, size: .5, transparent: true, opacity: 0 }));
+  scene.add(fireflies);
+}
+
+/* ---------- דרקון ---------- */
+let dragon, dragonParts, dragonAngle = 0, dragonAttackT = 0;
+const dragonFireballs = [];
+function buildDragon() {
+  dragon = new THREE.Group();
+  const red = new THREE.MeshLambertMaterial({ color: 0xbb2222, flatShading: true });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x771111, flatShading: true });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(1.2, .7, 7, 8), red);
+  body.rotation.x = Math.PI / 2; dragon.add(body);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(1, 2.6, 6), red);
+  head.rotation.x = -Math.PI / 2; head.position.z = 4.5; dragon.add(head);
+  [-.4, .4].forEach(x => {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(.18, 1, 5), dark);
+    horn.position.set(x, .8, 4); horn.rotation.x = -.5; dragon.add(horn);
+  });
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(.55, 5, 6), red);
+  tail.rotation.x = Math.PI / 2; tail.position.z = -5.5; dragon.add(tail);
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0, 0); wingShape.lineTo(7, 2.5); wingShape.lineTo(8, -1); wingShape.lineTo(4.5, -1.6); wingShape.lineTo(0, -1);
+  const wingG = new THREE.ShapeGeometry(wingShape);
+  const wingMat = new THREE.MeshLambertMaterial({ color: 0x992222, side: THREE.DoubleSide, flatShading: true });
+  const wL = new THREE.Mesh(wingG, wingMat), wR = new THREE.Mesh(wingG, wingMat);
+  wL.position.set(-.8, .5, 1); wR.position.set(.8, .5, 1);
+  wR.scale.x = -1;
+  dragon.add(wL, wR);
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+  [-.35, .35].forEach(x => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(.16, 6, 6), eyeMat);
+    eye.position.set(x, .35, 5.2); dragon.add(eye);
+  });
+  dragon.scale.setScalar(1.6);
+  dragon.position.set(0, 70, 0);
+  scene.add(dragon);
+  dragonParts = { wL, wR };
+}
+
+/* ---------- שחקן ---------- */
+function buildPlayer() {
+  player = { pos: new THREE.Vector3(0, heightAt(0, 6) + 2, 6) };
+  playerMesh = new THREE.Group();
+  const shirt = new THREE.MeshLambertMaterial({ color: 0x2e6fd8, flatShading: true });
+  const pants = new THREE.MeshLambertMaterial({ color: 0x27406e, flatShading: true });
+  const skin  = new THREE.MeshLambertMaterial({ color: 0xf2c896, flatShading: true });
+  const hairM = new THREE.MeshLambertMaterial({ color: 0x4a2f1a, flatShading: true });
+  const shoeM = new THREE.MeshLambertMaterial({ color: 0x333333, flatShading: true });
+  const capeM = new THREE.MeshLambertMaterial({ color: 0xb52420, flatShading: true, side: THREE.DoubleSide });
+
+  // גוף — חולצה עם "חגורה"
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(.3, .38, .75, 8), shirt);
+  body.position.y = 1.28; body.castShadow = true; playerMesh.add(body);
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(.39, .39, .1, 8), new THREE.MeshLambertMaterial({ color: 0x8a5a2b }));
+  belt.position.y = .93; playerMesh.add(belt);
+
+  // ראש — פנים, עיניים, חיוך, שיער
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.36, 14, 12), skin);
+  head.position.y = 1.98; head.castShadow = true; playerMesh.add(head);
+  [-.13, .13].forEach(x => {
+    const eyeW = new THREE.Mesh(new THREE.SphereGeometry(.075, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    eyeW.position.set(x, 2.03, .3); playerMesh.add(eyeW);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(.038, 6, 6), new THREE.MeshBasicMaterial({ color: 0x1a1a2e }));
+    pupil.position.set(x, 2.03, .365); playerMesh.add(pupil);
+  });
+  const smile = new THREE.Mesh(new THREE.TorusGeometry(.09, .022, 6, 10, Math.PI), new THREE.MeshBasicMaterial({ color: 0x7a3b2e }));
+  smile.position.set(0, 1.9, .35); smile.rotation.set(-.25, 0, Math.PI); playerMesh.add(smile);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(.055, 6, 6), new THREE.MeshLambertMaterial({ color: 0xe8b57e }));
+  nose.position.set(0, 1.97, .375); playerMesh.add(nose);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(.38, 12, 8, 0, Math.PI * 2, 0, 1.35), hairM);
+  hair.position.y = 2.04; hair.scale.z = 1.05; playerMesh.add(hair);
+  const tuft = new THREE.Mesh(new THREE.ConeGeometry(.09, .22, 5), hairM);
+  tuft.position.set(.12, 2.38, .05); tuft.rotation.z = -.5; playerMesh.add(tuft);
+
+  // גלימה — מתנופפת בריצה
+  const cape = new THREE.Mesh(new THREE.PlaneGeometry(.62, .95, 1, 3), capeM);
+  cape.geometry.translate(0, -.475, 0);
+  cape.position.set(0, 1.55, -.28);
+  cape.rotation.x = .22;
+  playerMesh.add(cape);
+
+  // ידיים — פיבוט בכתף, כף יד בקצה
+  const arms = [];
+  [-.44, .44].forEach(x => {
+    const g = new THREE.Group();
+    g.position.set(x, 1.58, 0);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(.1, .5, 3, 6), shirt);
+    arm.position.y = -.3; g.add(arm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(.11, 8, 8), skin);
+    hand.position.y = -.62; g.add(hand);
+    playerMesh.add(g); arms.push(g);
+  });
+
+  // רגליים — פיבוט בירך, נעל בקצה
+  const legs = [];
+  [-.17, .17].forEach(x => {
+    const g = new THREE.Group();
+    g.position.set(x, .95, 0);
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(.12, .5, 3, 6), pants);
+    leg.position.y = -.42; g.add(leg);
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(.2, .14, .34), shoeM);
+    shoe.position.set(0, -.78, .06); g.add(shoe);
+    playerMesh.add(g); legs.push(g);
+  });
+
+  playerMesh.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  playerMesh.userData = { arms, legs, cape, body, head: null };
+  scene.add(playerMesh);
+}
+
+/* ---------- חלקיקים ---------- */
+const MAXP = 600;
+let pPoints, pData = [];
+function initParticles() {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAXP * 3), 3));
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAXP * 3), 3));
+  pPoints = new THREE.Points(g, new THREE.PointsMaterial({ size: .55, vertexColors: true, transparent: true, opacity: .95, blending: THREE.AdditiveBlending, depthWrite: false }));
+  scene.add(pPoints);
+  for (let i = 0; i < MAXP; i++) pData.push({ life: 0, pos: new THREE.Vector3(), vel: new THREE.Vector3(), col: new THREE.Color() });
+}
+function burst(pos, color, count, speed, up = 2) {
+  let made = 0;
+  for (const p of pData) {
+    if (p.life > 0) continue;
+    p.life = .6 + Math.random() * .7;
+    p.pos.copy(pos);
+    p.vel.set((Math.random() - .5) * speed, Math.random() * up + 1, (Math.random() - .5) * speed);
+    p.col.set(color).offsetHSL((Math.random() - .5) * .08, 0, (Math.random() - .5) * .2);
+    if (++made >= count) break;
+  }
+}
+function updateParticles(dt) {
+  const pos = pPoints.geometry.attributes.position, col = pPoints.geometry.attributes.color;
+  pData.forEach((p, i) => {
+    if (p.life > 0) {
+      p.life -= dt;
+      p.vel.y -= 6 * dt;
+      p.pos.addScaledVector(p.vel, dt);
+      pos.setXYZ(i, p.pos.x, p.pos.y, p.pos.z);
+      col.setXYZ(i, p.col.r * p.life, p.col.g * p.life, p.col.b * p.life);
+    } else pos.setXYZ(i, 0, -999, 0);
+  });
+  pos.needsUpdate = true; col.needsUpdate = true;
+}
+
+/* ---------- כדורי אש ---------- */
+const fireballs = [];
+let lightPool = 0;
+function shoot() {
+  if (dead || won || !started) return;
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(.35, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffaa33 }));
+  ball.position.copy(player.pos).add(new THREE.Vector3(0, 1.7, 0)).addScaledVector(dir, 1.2);
+  if (lightPool < 4) {
+    const l = new THREE.PointLight(0xff8830, 1.6, 14);
+    ball.add(l); ball.userData.hasLight = true; lightPool++;
+  }
+  scene.add(ball);
+  fireballs.push({ mesh: ball, vel: dir.clone().multiplyScalar(72), life: 2.4 });
+  sfxShoot();
+}
+function killFireball(fb, i) {
+  if (fb.mesh.userData.hasLight) lightPool--;
+  scene.remove(fb.mesh);
+  fireballs.splice(i, 1);
+}
+
+/* ---------- קלט ---------- */
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyM') musicOn = !musicOn;
+  if (e.code === 'Space') e.preventDefault();
+});
+addEventListener('keyup', e => keys[e.code] = false);
+document.addEventListener('mousemove', e => {
+  if (document.pointerLockElement) {
+    yaw -= e.movementX * 0.0024;
+    pitch = Math.max(-1.2, Math.min(0.7, pitch - e.movementY * 0.0024));
+  }
+});
+addEventListener('mousedown', e => {
+  if (!started || dead || won) return;
+  if (!document.pointerLockElement) { renderer.domElement.requestPointerLock(); return; }
+  if (e.button === 0) shoot();
+});
+
+/* מגע */
+const touch = { active: false, mx: 0, mz: 0, lookId: -1, lx: 0, ly: 0, jump: false };
+function setupTouch() {
+  if (!('ontouchstart' in window)) return;
+  $('touchUI').style.display = 'block';
+  $('hint').style.display = 'none';
+  const stick = $('stick'), nub = $('nub');
+  let stickId = -1;
+  stick.addEventListener('touchstart', e => { stickId = e.changedTouches[0].identifier; e.preventDefault(); }, { passive: false });
+  addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) {
+        const r = stick.getBoundingClientRect();
+        let dx = t.clientX - (r.left + 60), dy = t.clientY - (r.top + 60);
+        const len = Math.hypot(dx, dy) || 1, cl = Math.min(len, 45);
+        dx = dx / len * cl; dy = dy / len * cl;
+        nub.style.left = (35 + dx) + 'px'; nub.style.top = (35 + dy) + 'px';
+        touch.mx = dx / 45; touch.mz = dy / 45;
+      } else if (t.identifier === touch.lookId) {
+        yaw -= (t.clientX - touch.lx) * .006;
+        pitch = Math.max(-1.2, Math.min(.7, pitch - (t.clientY - touch.ly) * .006));
+        touch.lx = t.clientX; touch.ly = t.clientY;
+      }
+    }
+    e.preventDefault();
+  }, { passive: false });
+  addEventListener('touchstart', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== stickId && t.target.tagName !== 'BUTTON' && t.clientX < innerWidth * .6) {
+        touch.lookId = t.identifier; touch.lx = t.clientX; touch.ly = t.clientY;
+      }
+    }
+  });
+  addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === stickId) { stickId = -1; touch.mx = touch.mz = 0; nub.style.left = '35px'; nub.style.top = '35px'; }
+      if (t.identifier === touch.lookId) touch.lookId = -1;
+    }
+  });
+  $('btnFire').addEventListener('touchstart', e => { e.preventDefault(); shoot(); }, { passive: false });
+  $('btnJump').addEventListener('touchstart', e => { e.preventDefault(); touch.jump = true; }, { passive: false });
+}
+
+/* ---------- HUD ---------- */
+function toast(msg, ms = 2600) {
+  const t = $('toast');
+  t.innerHTML = msg; t.style.opacity = 1;
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.style.opacity = 0, ms);
+}
+function updateHearts() {
+  $('hearts').textContent = '❤️'.repeat(Math.max(0, hp)) + '🖤'.repeat(Math.max(0, 5 - hp));
+}
+function hurt(dmg, from) {
+  if (invuln > 0 || dead || won) return;
+  hp -= dmg; invuln = 1.2;
+  updateHearts(); sfxHurt();
+  $('vignette').style.opacity = 1;
+  setTimeout(() => $('vignette').style.opacity = 0, 250);
+  if (from) {
+    const kb = player.pos.clone().sub(from).setY(0).normalize().multiplyScalar(14);
+    vel.add(kb); vel.y = 6;
+  }
+  if (hp <= 0) {
+    dead = true;
+    document.exitPointerLock && document.exitPointerLock();
+    $('deadScreen').style.display = 'flex';
+  }
+}
+
+/* ---------- בוס ---------- */
+function startBoss() {
+  bossMode = true;
+  sfxRoar();
+  $('bossbar').style.display = 'block';
+  $('mission').textContent = '🐉 הדרקון התעורר! פגעו בו עם כדורי אש!';
+  toast('🐉 <span style="color:#ff8a8a">דרקון האש התעורר!!</span>', 3500);
+}
+function dragonShoot() {
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(.8, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff4422 }));
+  orb.position.copy(dragon.position);
+  scene.add(orb);
+  const target = player.pos.clone().add(new THREE.Vector3(0, 1, 0));
+  const dir = target.sub(dragon.position).normalize();
+  dragonFireballs.push({ mesh: orb, vel: dir.multiplyScalar(32), life: 5 });
+  tone(500, .4, 'sawtooth', .15, 0, -300);
+}
+function winGame() {
+  won = true;
+  sfxWin();
+  burst(dragon.position, 0xffdd44, 200, 22, 12);
+  scene.remove(dragon);
+  document.exitPointerLock && document.exitPointerLock();
+  setTimeout(() => $('winScreen').style.display = 'flex', 1600);
+}
+
+/* ---------- לולאת המשחק ---------- */
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  if (started) timeOfDay = (timeOfDay + dt / DAY_LEN) % 1;
+  updateSky();
+  if (started && !dead) {
+    updatePlayer(dt, t);
+    updateCrystals(dt, t);
+    updateSlimes(dt, t);
+    updateFireballs(dt);
+    updateDragon(dt, t);
+  }
+  updateFoxes(dt, t);
+  updateBirds(dt, t);
+  updateParticles(dt);
+  if (water) water.position.y = WATER_Y + Math.sin(t * .8) * .12;
+  if (invuln > 0) invuln -= dt;
+  renderer.render(scene, camera);
+}
+
+function updateSky() {
+  const a = timeOfDay * Math.PI * 2 - Math.PI / 2; // 0.5=צהריים
+  const sdir = new THREE.Vector3(Math.cos(a), Math.sin(a), 0.35).normalize();
+  const pp = player ? player.pos : new THREE.Vector3();
+  sun.position.copy(pp).addScaledVector(sdir, 180);
+  sun.target.position.copy(pp);
+  sunMesh.position.copy(camera.position).addScaledVector(sdir, 850);
+  moonMesh.position.copy(camera.position).addScaledVector(sdir, -850);
+  const dayF = Math.max(0, Math.min(1, Math.sin(a) * 2 + .25)); // 1=יום מלא
+  sun.intensity = dayF * 1.4;
+  moonLight.position.copy(pp).addScaledVector(sdir, -180);
+  moonLight.intensity = (1 - dayF) * .3;
+  ambient.intensity = .1 + dayF * .22;
+  hemi.intensity = .1 + dayF * .32;
+  const day = new THREE.Color(0x87c5eb), eve = new THREE.Color(0xf5a05a), night = new THREE.Color(0x0a1226);
+  const sky = new THREE.Color();
+  if (dayF > .5) sky.copy(eve).lerp(day, (dayF - .5) * 2);
+  else sky.copy(night).lerp(eve, dayF * 2);
+  scene.background = sky;
+  scene.fog.color.copy(sky);
+  stars.material.opacity = Math.max(0, 1 - dayF * 1.8);
+  fireflies.material.opacity = Math.max(0, 1 - dayF * 1.6) * (0.6 + 0.4 * Math.sin(clock.elapsedTime * 3));
+}
+
+function updatePlayer(dt, t) {
+  const speed = (keys['ShiftLeft'] || keys['ShiftRight']) ? 16 : 9;
+  const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  const r = new THREE.Vector3(-f.z, 0, f.x);
+  const move = new THREE.Vector3();
+  if (keys['KeyW'] || keys['ArrowUp']) move.add(f);
+  if (keys['KeyS'] || keys['ArrowDown']) move.sub(f);
+  if (keys['KeyD'] || keys['ArrowRight']) move.add(r);
+  if (keys['KeyA'] || keys['ArrowLeft']) move.sub(r);
+  move.add(f.clone().multiplyScalar(-touch.mz)).add(r.clone().multiplyScalar(touch.mx));
+  if (move.lengthSq() > 0) move.normalize();
+
+  vel.x += (move.x * speed - vel.x) * Math.min(1, dt * 8);
+  vel.z += (move.z * speed - vel.z) * Math.min(1, dt * 8);
+  vel.y -= 28 * dt;
+  if ((keys['Space'] || touch.jump) && onGround) { vel.y = 12; onGround = false; sfxJump(); }
+  touch.jump = false;
+
+  player.pos.addScaledVector(vel, dt);
+  const lim = WORLD * .48;
+  player.pos.x = Math.max(-lim, Math.min(lim, player.pos.x));
+  player.pos.z = Math.max(-lim, Math.min(lim, player.pos.z));
+  const ground = Math.max(heightAt(player.pos.x, player.pos.z), WATER_Y - .4);
+  if (player.pos.y <= ground) { player.pos.y = ground; vel.y = 0; onGround = true; }
+
+  playerMesh.position.copy(player.pos);
+  const moving = move.lengthSq() > 0;
+  const ud = playerMesh.userData;
+  const runF = Math.min(1, Math.hypot(vel.x, vel.z) / 9); // 0..1 עוצמת ריצה
+  if (moving) playerMesh.rotation.y = Math.atan2(move.x, move.z);
+  if (!onGround) { // באוויר — רגליים מקופלות, ידיים למעלה
+    ud.legs[0].rotation.x += (-.7 - ud.legs[0].rotation.x) * .2;
+    ud.legs[1].rotation.x += (.4 - ud.legs[1].rotation.x) * .2;
+    ud.arms[0].rotation.x += (-2.4 - ud.arms[0].rotation.x) * .15;
+    ud.arms[1].rotation.x += (-2.4 - ud.arms[1].rotation.x) * .15;
+  } else if (moving) {
+    const sw = Math.sin(t * 11) * .8 * runF;
+    ud.legs[0].rotation.x = sw;
+    ud.legs[1].rotation.x = -sw;
+    ud.arms[0].rotation.x = -sw * .8;
+    ud.arms[1].rotation.x = sw * .8;
+    playerMesh.position.y += Math.abs(Math.sin(t * 11)) * .08 * runF; // קפיצת צעד
+  } else { // עמידה — נשימה קלה
+    ud.legs[0].rotation.x *= .8; ud.legs[1].rotation.x *= .8;
+    ud.arms[0].rotation.x *= .8; ud.arms[1].rotation.x *= .8;
+    ud.arms[0].rotation.z = .08 + Math.sin(t * 2) * .04;
+    ud.arms[1].rotation.z = -.08 - Math.sin(t * 2) * .04;
+  }
+  ud.cape.rotation.x = .22 + runF * .55 + Math.sin(t * 9) * .07 * (runF + .15);
+
+  // מצלמת גוף שלישי
+  const camOff = new THREE.Vector3(Math.sin(yaw) * 9 * Math.cos(pitch), 3.5 - Math.sin(pitch) * 8, Math.cos(yaw) * 9 * Math.cos(pitch));
+  const camTarget = player.pos.clone().add(camOff);
+  camTarget.y = Math.max(camTarget.y, heightAt(camTarget.x, camTarget.z) + 1);
+  camera.position.lerp(camTarget, Math.min(1, dt * 10));
+  camera.lookAt(player.pos.x, player.pos.y + 2, player.pos.z);
+}
+
+function updateCrystals(dt, t) {
+  crystals.forEach(c => {
+    if (c.taken) return;
+    c.mesh.rotation.y += dt * 2;
+    c.mesh.position.y = c.baseY + Math.sin(t * 2 + c.baseY) * .3;
+    if (c.mesh.position.distanceTo(player.pos) < 2.6) {
+      c.taken = true;
+      scene.remove(c.mesh);
+      gems++; score += 10;
+      $('gems').textContent = Math.min(gems, 10);
+      $('score').textContent = score;
+      sfxGem();
+      burst(c.mesh.position, 0x66eeff, 30, 8);
+      toast('💎 גביש נאסף! (' + gems + '/10)');
+      if (gems >= 10 && !bossMode) startBoss();
+    }
+  });
+}
+
+function updateFoxes(dt, t) {
+  foxes.forEach(fx => {
+    fx.timer -= dt;
+    const toPlayer = started ? fx.mesh.position.distanceTo(player.pos) : 99;
+    let sp = 2.2;
+    if (toPlayer < 7) { // בורח
+      fx.target.copy(fx.mesh.position).add(fx.mesh.position.clone().sub(player.pos).setY(0).normalize().multiplyScalar(18));
+      sp = 7; fx.timer = 1;
+    } else if (fx.timer <= 0) {
+      fx.timer = 3 + Math.random() * 4;
+      fx.target.set(fx.mesh.position.x + (Math.random() - .5) * 40, 0, fx.mesh.position.z + (Math.random() - .5) * 40);
+    }
+    const d = fx.target.clone().sub(fx.mesh.position).setY(0);
+    if (d.length() > 1.5) {
+      d.normalize();
+      fx.mesh.position.addScaledVector(d, sp * dt);
+      const targetRot = Math.atan2(d.x, d.z) - Math.PI / 2;
+      let dr = targetRot - fx.mesh.rotation.y;
+      while (dr > Math.PI) dr -= Math.PI * 2; while (dr < -Math.PI) dr += Math.PI * 2;
+      fx.mesh.rotation.y += dr * Math.min(1, dt * 6);
+      fx.mesh.userData.legs.forEach((leg, i) => leg.rotation.x = Math.sin(t * sp * 3 + i * Math.PI) * .6);
+    } else fx.mesh.userData.legs.forEach(leg => leg.rotation.x *= .85);
+    const lim = WORLD * .45;
+    fx.mesh.position.x = Math.max(-lim, Math.min(lim, fx.mesh.position.x));
+    fx.mesh.position.z = Math.max(-lim, Math.min(lim, fx.mesh.position.z));
+    fx.mesh.position.y = Math.max(heightAt(fx.mesh.position.x, fx.mesh.position.z), WATER_Y - .3);
+  });
+}
+
+function updateBirds(dt, t) {
+  birds.forEach(b => {
+    b.a += b.sp * dt;
+    const x = b.cx + Math.cos(b.a) * b.r, z = b.cz + Math.sin(b.a) * b.r;
+    const y = b.h + Math.sin(t * .7 + b.r) * 3;
+    b.mesh.position.set(x, y, z);
+    b.mesh.rotation.y = -b.a;
+    b.flap += dt * 9;
+    const w = Math.sin(b.flap) * .55;
+    b.mesh.userData.wL.rotation.z = w;
+    b.mesh.userData.wR.rotation.z = -w;
+  });
+}
+
+function updateSlimes(dt, t) {
+  slimes.forEach(s => {
+    if (!s.alive) return;
+    const distP = s.mesh.position.distanceTo(player.pos);
+    s.hopT -= dt;
+    if (s.grounded && s.hopT <= 0) {
+      s.vy = 9;
+      s.grounded = false;
+      s.hopT = .9 + Math.random() * .8;
+      const dir = distP < 28
+        ? player.pos.clone().sub(s.mesh.position).setY(0).normalize()
+        : new THREE.Vector3(Math.random() - .5, 0, Math.random() - .5).normalize();
+      s.hdir = dir.multiplyScalar(distP < 28 ? 8 : 4);
+      s.mesh.lookAt(s.mesh.position.clone().add(dir));
+    }
+    if (!s.grounded) {
+      s.vy -= 26 * dt;
+      s.mesh.position.y += s.vy * dt;
+      if (s.hdir) s.mesh.position.addScaledVector(s.hdir, dt);
+      const g = Math.max(heightAt(s.mesh.position.x, s.mesh.position.z), WATER_Y - .2) + s.scale * .75;
+      if (s.mesh.position.y <= g) {
+        s.mesh.position.y = g; s.grounded = true;
+        s.mesh.userData.body.scale.set(1.25, .5, 1.25);
+      }
+    }
+    const b = s.mesh.userData.body;
+    b.scale.lerp(new THREE.Vector3(1, .75, 1), Math.min(1, dt * 6));
+    if (distP < s.scale + 1.1) hurt(1, s.mesh.position);
+  });
+}
+
+function updateFireballs(dt) {
+  // כדורי השחקן
+  for (let i = fireballs.length - 1; i >= 0; i--) {
+    const fb = fireballs[i];
+    fb.life -= dt;
+    fb.vel.y -= 2 * dt;
+    if (bossMode && !won) { // כיוון עדין לעבר הדרקון
+      const toD = dragon.position.clone().sub(fb.mesh.position).normalize();
+      if (fb.vel.clone().normalize().dot(toD) > .5) fb.vel.lerp(toD.multiplyScalar(fb.vel.length()), Math.min(1, dt * 5));
+    }
+    fb.mesh.position.addScaledVector(fb.vel, dt);
+    const p = fb.mesh.position;
+    let hit = fb.life <= 0 || p.y < heightAt(p.x, p.z) || p.y < WATER_Y - .3;
+    // פגיעה בסלים
+    for (const s of slimes) {
+      if (s.alive && p.distanceTo(s.mesh.position) < s.scale + .8) {
+        s.hp--;
+        burst(p, 0xffaa33, 20, 9);
+        if (s.hp <= 0) {
+          s.alive = false;
+          scene.remove(s.mesh);
+          score += 25; $('score').textContent = score;
+          burst(s.mesh.position, 0x66ff66, 40, 12, 5);
+          toast('💥 סלים חוסל! +25');
+          setTimeout(() => { // סלים חדש נולד במקום אחר
+            const [px, , pz] = scatter(1, WATER_Y + 1.5, 14)[0] || [0, 0, 20];
+            spawnSlime(px, pz);
+          }, 6000);
+        }
+        hit = true; break;
+      }
+    }
+    // פגיעה בדרקון
+    if (bossMode && !won && p.distanceTo(dragon.position) < 10) {
+      bossHP--;
+      $('bossfill').style.width = (bossHP / BOSS_MAX * 100) + '%';
+      burst(p, 0xff5533, 35, 12);
+      sfxBoom();
+      score += 15; $('score').textContent = score;
+      if (bossHP <= 0) winGame();
+      hit = true;
+    }
+    if (hit) {
+      if (fb.life > 0) { burst(p, 0xff8833, 16, 7); sfxBoom(); }
+      killFireball(fb, i);
+    }
+  }
+  // כדורי הדרקון
+  for (let i = dragonFireballs.length - 1; i >= 0; i--) {
+    const fb = dragonFireballs[i];
+    fb.life -= dt;
+    fb.mesh.position.addScaledVector(fb.vel, dt);
+    fb.mesh.rotation.x += dt * 8;
+    const p = fb.mesh.position;
+    if (p.distanceTo(player.pos.clone().add(new THREE.Vector3(0, 1, 0))) < 2.2) {
+      hurt(1, p);
+      burst(p, 0xff3322, 30, 10);
+      scene.remove(fb.mesh); dragonFireballs.splice(i, 1);
+    } else if (fb.life <= 0 || p.y < heightAt(p.x, p.z)) {
+      burst(p, 0xff3322, 25, 9); sfxBoom();
+      scene.remove(fb.mesh); dragonFireballs.splice(i, 1);
+    }
+  }
+}
+
+function updateDragon(dt, t) {
+  if (won) return;
+  dragonAngle += dt * (bossMode ? .3 : .18);
+  const r = bossMode ? 34 : 85;
+  const h = bossMode ? 22 + Math.sin(t * .5) * 6 : 62;
+  const cx = bossMode ? player.pos.x * .3 : 0, cz = bossMode ? player.pos.z * .3 : 0;
+  const nx = cx + Math.cos(dragonAngle) * r, nz = cz + Math.sin(dragonAngle) * r;
+  const dir = new THREE.Vector3(nx - dragon.position.x, 0, nz - dragon.position.z);
+  dragon.position.set(nx, h, nz);
+  if (dir.lengthSq() > .001) dragon.lookAt(dragon.position.clone().add(dir));
+  const w = Math.sin(t * 5) * .6;
+  dragonParts.wL.rotation.y = w * .8 + .3;
+  dragonParts.wR.rotation.y = -w * .8 - .3;
+  if (bossMode) {
+    dragonAttackT -= dt;
+    if (dragonAttackT <= 0) { dragonAttackT = 2.6; dragonShoot(); }
+  }
+}
+
+/* ---------- התחלה ---------- */
+$('startBtn').addEventListener('click', () => {
+  $('startScreen').style.display = 'none';
+  started = true;
+  initAudio();
+  setupTouch();
+  if (!('ontouchstart' in window)) renderer.domElement.requestPointerLock();
+  toast('💎 אספו 10 גבישים כחולים!');
+});
+$('respawnBtn').addEventListener('click', () => {
+  dead = false; hp = 5; invuln = 3;
+  updateHearts();
+  player.pos.set(0, heightAt(0, 6) + 2, 6);
+  vel.set(0, 0, 0);
+  $('deadScreen').style.display = 'none';
+  if (!('ontouchstart' in window)) renderer.domElement.requestPointerLock();
+});
+
+init();
+</script>
+</body>
+</html>
